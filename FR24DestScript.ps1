@@ -2,7 +2,9 @@
 
 $APIToken = Get-Secret -Name FR24Token -AsPlainText
 $queryBounds = Get-Secret -Name BoundingBox -AsPlainText #I'm not doxxing myself
-$headers = @{
+$webhookURL = Get-Secret -Name WebhookURL -AsPlainText #no spamming my webhooks
+
+$FRHeaders = @{
     "Accept" = "application/json";
     "Accept-Version" = "v1";
     "Authorization" = "Bearer $APIToken"
@@ -10,16 +12,19 @@ $headers = @{
 
 $iataList = Import-Csv -Path .\iata.csv
 
-#$FlightInfo = Invoke-WebRequest -Method Get -Uri "https://fr24api.flightradar24.com/api/live/flight-positions/full?bounds=$queryBounds" -Headers $headers
+$FlightInfo = Invoke-WebRequest -Method Get -Uri "https://fr24api.flightradar24.com/api/live/flight-positions/full?bounds=$queryBounds" -Headers $FRHeaders
 $FlightInfoData = $FlightInfo.Content | ConvertFrom-Json
-echo $FlightInfoData.data.flight
-echo $FlightInfoData.data.dest_iata
+$flight = $FlightInfoData.data.flight
 
-$result = $iataList | Where-Object { $_.iata -eq $FlightInfoData.data.dest_iata }
+$airport = $iataList | Where-Object { $_.iata -eq $FlightInfoData.data.dest_iata }
+$airport = $airport.airport
+$message = "That flight is $flight, going to $airport!"
 
-if ($result) {
-    Write-Host "Match found:"
-    $result | Select-Object -Property airport
-} else {
-    Write-Host "No match found."
+$DiscordHeaders = @{
+    "Content-Type" = "application/json";
 }
+
+$body = @{ content = $message }
+$requestBody = $body | ConvertTo-Json
+
+Invoke-WebRequest -Method Post -Uri $webhookURL -Headers $DiscordHeaders -Body $requestBody
