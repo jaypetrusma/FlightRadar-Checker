@@ -12,19 +12,27 @@ $FRHeaders = @{
 
 $iataList = Import-Csv -Path .\iata.csv
 
-$FlightInfo = Invoke-WebRequest -Method Get -Uri "https://fr24api.flightradar24.com/api/live/flight-positions/full?bounds=$queryBounds" -Headers $FRHeaders
+#$FlightInfo = Invoke-WebRequest -Method Get -Uri "https://fr24api.flightradar24.com/api/live/flight-positions/full?bounds=$queryBounds" -Headers $FRHeaders
 $FlightInfoData = $FlightInfo.Content | ConvertFrom-Json
 $flight = $FlightInfoData.data.flight
 
 $airport = $iataList | Where-Object { $_.iata -eq $FlightInfoData.data.dest_iata }
 $airport = $airport.airport
-$message = "That flight is $flight, going to $airport!"
 
-$DiscordHeaders = @{
-    "Content-Type" = "application/json";
+if ($flight) { 
+    $message = "That flight is $flight, going to $airport!" 
+    
+    $webhookHeaders = @{
+        "Content-Type" = "application/json";
+    }
+
+    $body = @{ content = $message }
+    $requestBody = $body | ConvertTo-Json
+
+    Invoke-WebRequest -Method Post -Uri $webhookURL -Headers $webhookHeaders -Body $requestBody
+    
 }
 
-$body = @{ content = $message }
-$requestBody = $body | ConvertTo-Json
-
-Invoke-WebRequest -Method Post -Uri $webhookURL -Headers $DiscordHeaders -Body $requestBody
+$APIToken = ""
+$queryBounds = ""
+$webhookURL = ""
