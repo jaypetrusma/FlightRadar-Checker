@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flightradar-checker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-01",
+
+  // Fires every minute (UTC). Active hours are gated in code using TIMEZONE.
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+
+  "kv_namespaces": [
+    {
+      "binding": "STATE",
+      // Replace with the real id from: npx wrangler kv namespace create STATE
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+
+  "vars": {
+    "TIMEZONE": "Australia/Sydney",
+    "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time
+    "ACTIVE_END": "23",    // hour (exclusive) polling stops, local time
+    "POLL_EVERY_N_MINUTES": "1" // raise to 2 or 3 if FR24 credits run tight
+  }
+
+  // Secrets (set with: npx wrangler secret put <NAME>):
+  //   FR24_TOKEN  - FR24 API bearer token
+  //   BOUNDS      - bounding box "north,south,west,east" (kept secret)
+  //   WEBHOOK_URL - Discord/webhook endpoint for alerts
+}
