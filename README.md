@@ -2,7 +2,9 @@
 
 Alerts a webhook (e.g. Discord) whenever a flight passes over the house, with the good stuff included:
 
-> ✈️ **QF432** (B738, VH-VYK) overhead at 35,000 ft — Sydney Airport (SYD) → Melbourne Airport (MEL), ETA 2:32 pm
+> ✈️ **QF432** (B738, VH-VYK) overhead at 35,000 ft — Sydney Airport (SYD) → Melbourne Airport (MEL), ETA 2:32 pm — #12 today
+
+The `#12 today` counter tracks flights alerted since midnight Sydney time and resets nightly.
 
 Runs entirely on **Cloudflare Workers free tier** — no machine at home needs to be on. A cron trigger fires every minute; the worker polls the FR24 API during active hours, deduplicates via Workers KV so each flight alerts once, and posts to the webhook.
 

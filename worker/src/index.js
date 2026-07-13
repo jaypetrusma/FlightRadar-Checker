@@ -45,17 +45,25 @@ export async function run(env) {
   const now = Date.now();
   let changed = prune(state.alerted, now);
 
+  const today = localDate(env.TIMEZONE);
+  if (state.countDate !== today) {
+    state.count = 0;
+    state.countDate = today;
+    changed = true;
+  }
+
   for (const f of flights) {
     if (state.alerted[f.fr24_id] && now - state.alerted[f.fr24_id] < REALERT_AFTER_MS) continue;
     state.alerted[f.fr24_id] = now;
+    state.count = (state.count ?? 0) + 1;
     changed = true;
-    await sendWebhook(env, buildMessage(f, env.TIMEZONE));
+    await sendWebhook(env, buildMessage(f, env.TIMEZONE, state.count));
   }
 
   if (changed) await env.STATE.put(STATE_KEY, JSON.stringify(state));
 }
 
-function buildMessage(f, timeZone) {
+function buildMessage(f, timeZone, count) {
   const ident = f.flight || f.callsign || f.reg || f.hex || "Unknown aircraft";
 
   const craft = [f.type, f.reg].filter(Boolean).join(", ");
@@ -78,6 +86,7 @@ function buildMessage(f, timeZone) {
     });
     msg += `, ETA ${eta}`;
   }
+  msg += ` — #${count} today`;
   return msg;
 }
 
@@ -113,6 +122,16 @@ function prune(alerted, now) {
     }
   }
   return changed;
+}
+
+function localDate(timeZone) {
+  // en-CA formats as YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function localTime(timeZone) {
