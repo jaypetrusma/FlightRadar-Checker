@@ -67,7 +67,7 @@ function buildMessage(f, timeZone, count) {
   const ident = f.flight || f.callsign || f.reg || f.hex || "Unknown aircraft";
 
   const craft = [f.type, f.reg].filter(Boolean).join(", ");
-  let msg = `✈️ **${ident}**${craft ? ` (${craft})` : ""} overhead`;
+  let msg = `**${ident}**${craft ? ` (${craft})` : ""} overhead`;
   if (f.alt > 0) msg += ` at ${f.alt.toLocaleString("en-AU")} ft`;
 
   const orig = airportName(f.orig_iata);
