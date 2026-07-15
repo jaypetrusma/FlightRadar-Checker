@@ -15,7 +15,10 @@ export default {
 
 export async function run(env) {
   const { hour, minute } = localTime(env.TIMEZONE);
-  if (hour < Number(env.ACTIVE_START) || hour >= Number(env.ACTIVE_END)) return;
+  if (hour < Number(env.ACTIVE_START) || hour >= Number(env.ACTIVE_END)) {
+    if (hour >= Number(env.ACTIVE_END)) await maybeSendDailySummary(env);
+    return;
+  }
   if (minute % Number(env.POLL_EVERY_N_MINUTES) !== 0) return;
 
   const base = env.FR24_BASE || "https://fr24api.flightradar24.com";
@@ -49,6 +52,7 @@ export async function run(env) {
   if (state.countDate !== today) {
     state.count = 0;
     state.countDate = today;
+    state.destinations = {};
     changed = true;
   }
 
@@ -56,6 +60,9 @@ export async function run(env) {
     if (state.alerted[f.fr24_id] && now - state.alerted[f.fr24_id] < REALERT_AFTER_MS) continue;
     state.alerted[f.fr24_id] = now;
     state.count = (state.count ?? 0) + 1;
+    const destKey = f.dest_iata || "unknown";
+    state.destinations = state.destinations ?? {};
+    state.destinations[destKey] = (state.destinations[destKey] ?? 0) + 1;
     changed = true;
     await sendWebhook(env, buildMessage(f, env.TIMEZONE, state.count));
   }
@@ -94,6 +101,34 @@ function airportName(iata) {
   if (!iata) return null;
   const name = airports[iata];
   return name ? `${name} (${iata})` : iata;
+}
+
+async function maybeSendDailySummary(env) {
+  const today = localDate(env.TIMEZONE);
+  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  if (state.summaryDate === today) return;
+
+  const count = state.countDate === today ? (state.count ?? 0) : 0;
+  const destinations = state.countDate === today ? (state.destinations ?? {}) : {};
+
+  const top3 = Object.entries(destinations)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  const medals = ["🥇", "🥈", "🥉"];
+  let msg = `@everyone ✈️ **Daily wrap-up** — **${count}** flight${count !== 1 ? "s" : ""} flew overhead today.`;
+  if (top3.length > 0) {
+    msg += "\nTop destinations:";
+    for (let i = 0; i < top3.length; i++) {
+      const [iata, n] = top3[i];
+      const name = iata === "unknown" ? "Unknown destination" : (airportName(iata) ?? iata);
+      msg += `\n${medals[i]} ${name} — ${n}`;
+    }
+  }
+
+  state.summaryDate = today;
+  await env.STATE.put(STATE_KEY, JSON.stringify(state));
+  await sendWebhook(env, msg);
 }
 
 async function sendWebhook(env, content) {
