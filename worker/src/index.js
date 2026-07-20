@@ -4,6 +4,7 @@
 import airports from "./airports.json";
 
 const STATE_KEY = "state";
+const SCOREBOARD_KEY = "scoreboard";
 const REALERT_AFTER_MS = 45 * 60 * 1000; // don't re-alert the same flight within 45 min
 const CREDIT_WARN_EVERY_MS = 24 * 60 * 60 * 1000;
 
@@ -14,7 +15,8 @@ export default {
 };
 
 export async function run(env) {
-  const { hour, minute } = localTime(env.TIMEZONE);
+  const { hour, minute, weekday } = localTime(env.TIMEZONE);
+  await maybeSendWeeklyScoreboard(env, weekday, hour);
   if (hour < Number(env.ACTIVE_START) || hour >= Number(env.ACTIVE_END)) {
     if (hour >= Number(env.ACTIVE_END)) await maybeSendDailySummary(env);
     return;
@@ -126,7 +128,48 @@ async function maybeSendDailySummary(env) {
     }
   }
 
+  // Update scoreboard and check for a new record
+  const board = (await env.STATE.get(SCOREBOARD_KEY, "json")) ?? {};
+  const prevEntries = Object.entries(board).filter(([date]) => date !== today);
+  const prevMax = prevEntries.reduce((max, [, n]) => Math.max(max, n), 0);
+  const prevMaxDate = prevEntries.find(([, n]) => n === prevMax)?.[0];
+  board[today] = count;
+  await env.STATE.put(SCOREBOARD_KEY, JSON.stringify(board));
+
+  if (count > 0 && count > prevMax) {
+    if (prevMax > 0) {
+      msg += `\n\n🏆 **New record!** ${count} flights beats the previous best of ${prevMax} set on ${prevMaxDate}.`;
+    } else {
+      msg += `\n\n🏆 **New record!** ${count} flights — the highest day so far!`;
+    }
+  }
+
   state.summaryDate = today;
+  await env.STATE.put(STATE_KEY, JSON.stringify(state));
+  await sendWebhook(env, msg);
+}
+
+async function maybeSendWeeklyScoreboard(env, weekday, hour) {
+  // Monday = 1, fire on the first tick at or after 7am
+  if (weekday !== 1 || hour < 7) return;
+
+  const today = localDate(env.TIMEZONE);
+  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  if (state.scoreboardDate === today) return;
+
+  const board = (await env.STATE.get(SCOREBOARD_KEY, "json")) ?? {};
+  const entries = Object.entries(board).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (entries.length === 0) return;
+
+  const medals = ["🥇", "🥈", "🥉"];
+  let msg = `@everyone 🏆 **Weekly scoreboard — Top 10 days**`;
+  for (let i = 0; i < entries.length; i++) {
+    const [date, n] = entries[i];
+    const prefix = i < 3 ? medals[i] : `${i + 1}.`;
+    msg += `\n${prefix} ${date} — ${n} flight${n !== 1 ? "s" : ""}`;
+  }
+
+  state.scoreboardDate = today;
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
   await sendWebhook(env, msg);
 }
@@ -169,13 +212,17 @@ function localDate(timeZone) {
   }).format(new Date());
 }
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function localTime(timeZone) {
+  const now = new Date();
   const parts = new Intl.DateTimeFormat("en-AU", {
     timeZone,
     hour: "numeric",
     minute: "numeric",
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const get = (t) => Number(parts.find((p) => p.type === t).value);
-  return { hour: get("hour") % 24, minute: get("minute") };
+  const weekdayStr = new Intl.DateTimeFormat("en-AU", { timeZone, weekday: "short" }).format(now);
+  return { hour: get("hour") % 24, minute: get("minute"), weekday: DAY_NAMES.indexOf(weekdayStr) };
 }
