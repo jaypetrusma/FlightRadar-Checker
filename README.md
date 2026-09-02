@@ -22,9 +22,10 @@ npx wrangler@4 login                          # opens browser OAuth
 npx wrangler@4 kv namespace create STATE      # prints an id
 # → paste that id into wrangler.jsonc replacing REPLACE_WITH_KV_NAMESPACE_ID
 
-npx wrangler@4 secret put FR24_TOKEN          # FR24 API bearer token
-npx wrangler@4 secret put BOUNDS              # bounding box "north,south,west,east"
-npx wrangler@4 secret put WEBHOOK_URL         # Discord webhook URL
+npx wrangler@4 secret put FR24_TOKEN               # FR24 API bearer token
+npx wrangler@4 secret put BOUNDS                   # bounding box "north,south,west,east"
+npx wrangler@4 secret put WEBHOOK_URL              # Discord webhook URL for per-flight alerts
+npx wrangler@4 secret put LEADERBOARD_WEBHOOK_URL  # Discord webhook URL for daily/weekly leaderboards
 
 npx wrangler@4 deploy
 ```
@@ -61,8 +62,9 @@ Create `worker/.dev.vars` (gitignored):
 ```
 FR24_TOKEN=dummy
 BOUNDS=-33.0,-34.0,150.0,151.0
-WEBHOOK_URL=http://127.0.0.1:9321/webhook     # or a real webhook for a live test
-FR24_BASE=http://127.0.0.1:9321               # omit to hit the real FR24 API
+WEBHOOK_URL=http://127.0.0.1:9321/webhook              # or a real webhook for a live test
+LEADERBOARD_WEBHOOK_URL=http://127.0.0.1:9321/webhook  # or a separate real webhook for a live test
+FR24_BASE=http://127.0.0.1:9321                        # omit to hit the real FR24 API
 ```
 
 Then:

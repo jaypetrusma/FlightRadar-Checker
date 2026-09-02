@@ -146,7 +146,7 @@ async function maybeSendDailySummary(env) {
 
   state.summaryDate = today;
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
-  await sendWebhook(env, msg);
+  await sendLeaderboardWebhook(env, msg);
 }
 
 async function maybeSendWeeklyScoreboard(env, weekday, hour) {
@@ -171,11 +171,19 @@ async function maybeSendWeeklyScoreboard(env, weekday, hour) {
 
   state.scoreboardDate = today;
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
-  await sendWebhook(env, msg);
+  await sendLeaderboardWebhook(env, msg);
 }
 
 async function sendWebhook(env, content) {
-  const res = await fetch(env.WEBHOOK_URL, {
+  await postWebhook(env.WEBHOOK_URL, content);
+}
+
+async function sendLeaderboardWebhook(env, content) {
+  await postWebhook(env.LEADERBOARD_WEBHOOK_URL, content);
+}
+
+async function postWebhook(url, content) {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),

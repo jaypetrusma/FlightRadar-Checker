@@ -24,7 +24,8 @@
   }
 
   // Secrets (set with: npx wrangler secret put <NAME>):
-  //   FR24_TOKEN  - FR24 API bearer token
-  //   BOUNDS      - bounding box "north,south,west,east" (kept secret)
-  //   WEBHOOK_URL - Discord/webhook endpoint for alerts
+  //   FR24_TOKEN               - FR24 API bearer token
+  //   BOUNDS                   - bounding box "north,south,west,east" (kept secret)
+  //   WEBHOOK_URL              - Discord/webhook endpoint for per-flight alerts and credit warnings
+  //   LEADERBOARD_WEBHOOK_URL  - Discord/webhook endpoint for daily and weekly leaderboard posts
 }
