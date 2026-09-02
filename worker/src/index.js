@@ -17,6 +17,7 @@ export default {
 export async function run(env) {
   const { hour, minute, weekday } = localTime(env.TIMEZONE);
   await maybeSendWeeklyScoreboard(env, weekday, hour);
+  await maybeSendWeeklyCreditReport(env, weekday, hour);
   if (hour < Number(env.ACTIVE_START) || hour >= Number(env.ACTIVE_END)) {
     if (hour >= Number(env.ACTIVE_END)) await maybeSendDailySummary(env);
     return;
@@ -172,6 +173,66 @@ async function maybeSendWeeklyScoreboard(env, weekday, hour) {
   state.scoreboardDate = today;
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
   await sendLeaderboardWebhook(env, msg);
+}
+
+async function maybeSendWeeklyCreditReport(env, weekday, hour) {
+  // Monday = 1, fire on the first tick at or after 7am — same cadence as the scoreboard
+  if (weekday !== 1 || hour < 7) return;
+
+  const today = localDate(env.TIMEZONE);
+  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  if (state.creditReportDate === today) return;
+
+  const maxCredits = Number(env.MAX_MONTHLY_CREDITS || 0);
+  const base = env.FR24_BASE || "https://fr24api.flightradar24.com";
+
+  let used30d, used7d;
+  try {
+    [used30d, used7d] = await Promise.all([
+      fetchUsageCredits(base, env.FR24_TOKEN, "30d"),
+      fetchUsageCredits(base, env.FR24_TOKEN, "7d"),
+    ]);
+  } catch (err) {
+    console.error(`Credit usage check failed: ${err}`);
+    return;
+  }
+
+  const avgDaily = used7d / 7;
+  const projected30d = avgDaily * 30;
+
+  let msg = `📊 **Weekly credit check** — ~${Math.round(used30d).toLocaleString("en-AU")} credits used in the last 30 days`;
+  if (maxCredits > 0) {
+    const remaining = maxCredits - used30d;
+    msg += ` of ${maxCredits.toLocaleString("en-AU")} (~${Math.round(remaining).toLocaleString("en-AU")} remaining).`;
+  } else {
+    msg += ".";
+  }
+  msg += `\nThis week's average: ~${Math.round(avgDaily).toLocaleString("en-AU")} credits/day.`;
+
+  if (maxCredits > 0) {
+    if (projected30d > maxCredits) {
+      msg += `\n⚠️ At this week's rate (~${Math.round(projected30d).toLocaleString("en-AU")} credits per 30 days), the plan's ${maxCredits.toLocaleString("en-AU")}-credit limit may run out before the month is up.`;
+    } else {
+      msg += `\n✅ At this week's rate, usage is on track to stay within the ${maxCredits.toLocaleString("en-AU")}-credit limit.`;
+    }
+  }
+
+  state.creditReportDate = today;
+  await env.STATE.put(STATE_KEY, JSON.stringify(state));
+  await sendLeaderboardWebhook(env, msg);
+}
+
+async function fetchUsageCredits(base, token, period) {
+  const res = await fetch(`${base}/api/usage?period=${period}`, {
+    headers: {
+      "Accept": "application/json",
+      "Accept-Version": "v1",
+      "Authorization": `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) throw new Error(`FR24 usage API returned ${res.status} for period=${period}`);
+  const rows = (await res.json()).data ?? [];
+  return rows.reduce((sum, row) => sum + (row.credits ?? 0), 0);
 }
 
 async function sendWebhook(env, content) {

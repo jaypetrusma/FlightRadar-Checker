@@ -40,6 +40,7 @@ That's it — it's live. Watch it run with `npx wrangler@4 tail`.
 | `ACTIVE_START` | `7` | First local hour (inclusive) polling runs |
 | `ACTIVE_END` | `23` | Local hour (exclusive) polling stops — i.e. 7am–11pm |
 | `POLL_EVERY_N_MINUTES` | `1` | Raise to 2 or 3 if FR24 credits run tight |
+| `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's monthly credit allowance — used only for the weekly credit report below |
 
 Redeploy after changing: `npx wrangler@4 deploy`.
 
@@ -48,6 +49,8 @@ Redeploy after changing: `npx wrangler@4 deploy`.
 FR24 charges per result: **1 credit** for an empty poll, **~8 credits per flight** returned (and a flight still in the box next poll is charged again). At 60 s × 16 h/day that's ~28,800 credits/month baseline — tight against the Explorer plan's 30,000. Check usage in the [FR24 API dashboard](https://fr24api.flightradar24.com) after the first day or two; if it's trending over, set `POLL_EVERY_N_MINUTES = "2"` (halves the baseline to ~14,400) or narrow the active hours.
 
 If credits run out, the FR24 API returns 402/429 — the worker sends a warning to the leaderboard webhook (at most once per day) so exhaustion doesn't go silent.
+
+Every Monday (same tick as the weekly scoreboard) the worker also posts a credit report to the leaderboard webhook, pulled from FR24's own `/api/usage` endpoint: credits used in the last 30 days, how much of `MAX_MONTHLY_CREDITS` that leaves, that week's daily average, and whether the current rate is projected to stay within the limit or run out early. FR24's usage windows are rolling (last 7/30 days), not calendar-month, so treat it as a close approximation rather than an exact billing-period figure.
 
 ## How the worker behaves
 

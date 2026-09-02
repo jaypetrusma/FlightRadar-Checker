@@ -20,7 +20,8 @@
     "TIMEZONE": "Australia/Sydney",
     "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time
     "ACTIVE_END": "23",    // hour (exclusive) polling stops, local time
-    "POLL_EVERY_N_MINUTES": "1" // raise to 2 or 3 if FR24 credits run tight
+    "POLL_EVERY_N_MINUTES": "1", // raise to 2 or 3 if FR24 credits run tight
+    "MAX_MONTHLY_CREDITS": "30000" // your FR24 plan's monthly credit allowance, for the weekly credit report
   }
 
   // Secrets (set with: npx wrangler secret put <NAME>):
