@@ -196,7 +196,7 @@ async function warnOnce(env, content) {
   if (Date.now() - (state.lastCreditWarn ?? 0) < CREDIT_WARN_EVERY_MS) return;
   state.lastCreditWarn = Date.now();
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
-  await sendWebhook(env, content);
+  await sendLeaderboardWebhook(env, content);
 }
 
 function prune(alerted, now) {

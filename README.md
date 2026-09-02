@@ -47,7 +47,7 @@ Redeploy after changing: `npx wrangler@4 deploy`.
 
 FR24 charges per result: **1 credit** for an empty poll, **~8 credits per flight** returned (and a flight still in the box next poll is charged again). At 60 s × 16 h/day that's ~28,800 credits/month baseline — tight against the Explorer plan's 30,000. Check usage in the [FR24 API dashboard](https://fr24api.flightradar24.com) after the first day or two; if it's trending over, set `POLL_EVERY_N_MINUTES = "2"` (halves the baseline to ~14,400) or narrow the active hours.
 
-If credits run out, the FR24 API returns 402/429 — the worker sends a warning to the webhook (at most once per day) so exhaustion doesn't go silent.
+If credits run out, the FR24 API returns 402/429 — the worker sends a warning to the leaderboard webhook (at most once per day) so exhaustion doesn't go silent.
 
 ## How the worker behaves
 
