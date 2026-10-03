@@ -15,6 +15,9 @@ export default {
 };
 
 export async function run(env) {
+  // Retired from STOP_ON (local date, YYYY-MM-DD) onwards: no polling, no reports, no credits used.
+  if (env.STOP_ON && localDate(env.TIMEZONE) >= env.STOP_ON) return;
+
   const { hour, minute, weekday } = localTime(env.TIMEZONE);
   await maybeSendWeeklyScoreboard(env, weekday, hour);
   await maybeSendWeeklyCreditReport(env, weekday, hour);

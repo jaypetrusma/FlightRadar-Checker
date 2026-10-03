@@ -41,6 +41,7 @@ That's it — it's live. Watch it run with `npx wrangler@4 tail`.
 | `ACTIVE_END` | `23` | Local hour (exclusive) polling stops — i.e. 7am–11pm |
 | `POLL_EVERY_N_MINUTES` | `1` | Raise to 2 or 3 if FR24 credits run tight |
 | `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's monthly credit allowance — used only for the weekly credit report below |
+| `STOP_ON` | `2026-10-31` | Local date (`YYYY-MM-DD`) from which the worker does nothing at all: no FR24 polls, alerts, or reports. Remove it to run indefinitely |
 
 Redeploy after changing: `npx wrangler@4 deploy`.
 
