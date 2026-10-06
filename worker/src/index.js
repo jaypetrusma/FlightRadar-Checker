@@ -7,6 +7,7 @@ const STATE_KEY = "state";
 const SCOREBOARD_KEY = "scoreboard";
 const REALERT_AFTER_MS = 45 * 60 * 1000; // don't re-alert the same flight within 45 min
 const CREDIT_WARN_EVERY_MS = 24 * 60 * 60 * 1000;
+const AVATAR_URL = "https://jaypetrusma.com/android-chrome-512x512.png"; // JP mark, shared across Jay's projects
 
 export default {
   async scheduled(controller, env, ctx) {
@@ -250,7 +251,7 @@ async function postWebhook(url, content) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, avatar_url: AVATAR_URL }),
   });
   if (!res.ok) console.error(`Webhook error ${res.status}: ${await res.text()}`);
 }
