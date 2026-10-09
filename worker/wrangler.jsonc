@@ -12,7 +12,7 @@
   // If you change ACTIVE_START/ACTIVE_END, widen the first one to match.
   "triggers": {
     "crons": [
-      "* 0-12,20-23 * * *",  // local 7am-11pm: poll every POLL_INTERVAL_SECONDS
+      "* 0-12,20-23 * * *",  // local 7am-11pm: poll FR24 (less often after a quiet stretch)
       "*/5 12-13 * * *",     // local 11pm: daily wrap-up
       "*/5 20-21 * * SUN"    // local Monday 7am: weekly scoreboard + credit report
     ]
@@ -31,14 +31,16 @@
     "TIMEZONE": "Australia/Sydney",
     "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time
     "ACTIVE_END": "23",    // hour (exclusive) polling stops and the wrap-up posts, local time
-    "POLL_INTERVAL_SECONDS": "30", // adsb.lol poll interval (10-60); free, so no credit cost
-    "MAX_MONTHLY_CREDITS": "30000", // FR24 plan allowance: weekly credit report, and daily budget = this / 30
-    // "DAILY_CREDIT_BUDGET": "1000", // optional override for the daily FR24 credit circuit breaker
+    "BACKOFF_AFTER_EMPTY_POLLS": "10", // after this many empty polls in a row, poll every 2 min (then 3 after 2x this)
+    "BACKOFF_MAX_MINUTES": "3",        // slowest poll interval while quiet; "1" turns back-off off
+    "MAX_MONTHLY_CREDITS": "30000", // FR24 plan allowance: weekly credit report, and polling pauses at this over 30 days
+    // "DAILY_CREDIT_BUDGET": "1500", // optional hard per-day cap on FR24 credits
+    // "CATEGORIES": "P,C",           // optional FR24 category filter, e.g. passenger + cargo only (skips GA/helicopters)
     "STOP_ON": "2026-10-31" // local date (YYYY-MM-DD) the worker goes permanently idle; remove to run indefinitely
   }
 
   // Secrets (set with: npx wrangler@4.149.0 secret put <NAME>):
-  //   FR24_TOKEN               - FR24 API bearer token (route lookups, and fallback polling if adsb.lol is down)
+  //   FR24_TOKEN               - FR24 API bearer token
   //   BOUNDS                   - bounding box "north,south,west,east" (kept secret)
   //   WEBHOOK_URL              - Discord/webhook endpoint for per-flight alerts
   //   LEADERBOARD_WEBHOOK_URL  - Discord/webhook endpoint for daily/weekly leaderboards and warnings

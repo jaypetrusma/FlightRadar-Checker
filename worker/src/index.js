@@ -13,15 +13,10 @@ const AVATAR_URL = "https://jaypetrusma.com/android-chrome-512x512.png"; // JP m
 const FETCH_TIMEOUT_MS = 10_000;
 const FAILURES_BEFORE_WARN = 5;
 const KEEP_SIGHTINGS_DAYS = 90;
-const MAX_POSITION_AGE_S = 60;
-const AIRLINE_CALLSIGN = /^[A-Z]{3}\d/; // ICAO airline callsigns (QFA432); GA regos rarely have an FR24 route
 const FR24_PROD = "https://fr24api.flightradar24.com";
-const ADSB_PROD = "https://api.adsb.lol";
-const ADSBDB_PROD = "https://api.adsbdb.com";
-const UA = "flightradar-checker (personal, non-commercial)";
 
 // FR24 credits: https://fr24api.flightradar24.com/docs/credit-overview (empty result = 1 credit)
-const CREDITS_POSITIONS_FULL = 8;
+const CREDITS_POSITIONS_LIGHT = 6;
 const CREDITS_SUMMARY_LIGHT = 1;
 
 export default {
@@ -41,166 +36,72 @@ async function runJobs(env, run) {
 
 // ---------- polling ----------
 
-// One cron tick a minute; poll several times inside it. Waiting doesn't count toward CPU time,
-// and cron invocations may run for up to 15 minutes of wall time.
+// Cron fires every minute. After a quiet stretch, poll less often: every empty poll still costs a credit.
 export async function pollMinute(env) {
-  const { hour } = localTime(env.TIMEZONE);
+  const { hour, minute } = localTime(env.TIMEZONE);
   if (hour < Number(env.ACTIVE_START) || hour >= Number(env.ACTIVE_END)) return;
 
-  const interval = Math.min(60, Math.max(10, Number(env.POLL_INTERVAL_SECONDS) || 30));
-  const start = Date.now();
-  for (let offset = 0; offset < 60; offset += interval) {
-    const wait = start + offset * 1000 - Date.now();
-    if (wait < 0 && offset > 0) continue; // a slow poll overran this slot
-    if (wait > 0) await sleep(wait);
-    // Paid FR24 fallback at most once a minute.
-    await pollOnce(env, { allowFr24Fallback: offset === 0 });
-  }
+  const emptyStreak = await getCounter(env, "empty-polls");
+  const step = backoffMinutes(env, emptyStreak);
+  if (step > 1 && minute % step !== 0) return;
+  await pollOnce(env, emptyStreak);
 }
 
-export async function pollOnce(env, { allowFr24Fallback }) {
-  const bounds = parseBounds(env.BOUNDS);
-  let aircraft = await fetchAdsbLol(env, bounds);
-  if (!aircraft) {
-    if (!allowFr24Fallback) return;
-    aircraft = await fetchFr24Positions(env);
-    if (!aircraft) return;
-  }
-  aircraft = aircraft.filter((a) => inBounds(a, bounds));
-  if (aircraft.length === 0) return;
+// e.g. BACKOFF_AFTER_EMPTY_POLLS=10, BACKOFF_MAX_MINUTES=3: every minute until 10 empty polls in a row,
+// then every 2 minutes, then every 3 after 20. The first flight seen resets it to every minute.
+function backoffMinutes(env, emptyStreak) {
+  const after = Number(env.BACKOFF_AFTER_EMPTY_POLLS) || 0;
+  const max = Math.max(1, Number(env.BACKOFF_MAX_MINUTES) || 1);
+  if (after <= 0) return 1;
+  return Math.min(max, 1 + Math.floor(emptyStreak / after));
+}
 
+export async function pollOnce(env, emptyStreak = 0) {
   const today = localTime(env.TIMEZONE).date;
+  const credits = await creditTracker(env, today);
+  if (!(await credits.canSpend(1))) return;
+
+  const params = { bounds: env.BOUNDS, limit: "15" }; // limit caps the cost of any one poll
+  if (env.CATEGORIES) params.categories = env.CATEGORIES;
+  const flights = await fr24Get(env, "/api/live/flight-positions/light", params, CREDITS_POSITIONS_LIGHT, credits);
+  if (!flights) return;
+  if (flights.length === 0) {
+    await setCounter(env, "empty-polls", emptyStreak + 1);
+    return;
+  }
+  if (emptyStreak > 0) await setCounter(env, "empty-polls", 0);
+
   const now = Date.now();
   const inserted = await env.DB.batch(
-    aircraft.map((a) =>
+    flights.map((f) =>
       env.DB.prepare(
         "INSERT OR IGNORE INTO sightings (day, aircraft, seen_at, callsign) VALUES (?, ?, ?, ?) RETURNING rowid"
-      ).bind(today, a.key, now, a.callsign || null)
+      ).bind(today, f.fr24_id, now, (f.callsign ?? "").trim() || null)
     )
   );
-  const fresh = aircraft
-    .map((a, i) => ({ ...a, rowid: inserted[i].results[0]?.rowid }))
-    .filter((a) => a.rowid !== undefined);
+  const fresh = flights
+    .map((f, i) => ({ ...f, callsign: (f.callsign ?? "").trim(), rowid: inserted[i].results[0]?.rowid }))
+    .filter((f) => f.rowid !== undefined);
   if (fresh.length === 0) return;
 
-  const credits = await creditTracker(env, today);
-  for (const a of fresh) {
-    if (!a.routeKnown) Object.assign(a, await lookupRoute(env, a, credits));
+  // Light positions have no route or aircraft details: one summary call covers every new flight (1 credit each).
+  if (await credits.canSpend(fresh.length * CREDITS_SUMMARY_LIGHT)) {
+    const rows = await fr24Get(env, "/api/flight-summary/light", { flight_ids: fresh.map((f) => f.fr24_id).join(",") }, CREDITS_SUMMARY_LIGHT, credits);
+    const byId = new Map((rows ?? []).map((s) => [s.fr24_id, s]));
+    for (const f of fresh) {
+      const s = byId.get(f.fr24_id);
+      if (s) Object.assign(f, { flight: s.flight, type: s.type, reg: s.reg, origIcao: s.orig_icao, destIcao: s.dest_icao_actual || s.dest_icao });
+    }
   }
 
   const results = await env.DB.batch(
-    fresh.flatMap((a) => [
-      env.DB.prepare("UPDATE sightings SET dest = ? WHERE day = ? AND aircraft = ?").bind(a.destIcao || null, today, a.key),
-      env.DB.prepare("SELECT COUNT(*) AS n FROM sightings WHERE day = ? AND rowid <= ?").bind(today, a.rowid),
+    fresh.flatMap((f) => [
+      env.DB.prepare("UPDATE sightings SET dest = ? WHERE day = ? AND aircraft = ?").bind(f.destIcao || null, today, f.fr24_id),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM sightings WHERE day = ? AND rowid <= ?").bind(today, f.rowid),
     ])
   );
-  const lines = fresh.map((a, i) => buildMessage(a, results[i * 2 + 1].results[0].n));
+  const lines = fresh.map((f, i) => buildMessage(f, results[i * 2 + 1].results[0].n));
   await postWebhook(env.WEBHOOK_URL, lines);
-}
-
-async function fetchAdsbLol(env, b) {
-  const lat = ((b.north + b.south) / 2).toFixed(4);
-  const lon = ((b.west + b.east) / 2).toFixed(4);
-  // Radius that covers the whole box; inBounds() trims back to the box afterwards.
-  const radiusNm = Math.max(1, Math.ceil(distanceNm(b.north, b.west, b.south, b.east) / 2));
-  const base = devOverride(env.ADSB_BASE, ADSB_PROD);
-  try {
-    const res = await fetchWithTimeout(`${base}/v2/point/${lat}/${lon}/${radiusNm}`, {
-      headers: { "Accept": "application/json", "User-Agent": UA },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
-    await clearFailures(env, "adsb");
-    return (body.ac ?? [])
-      .filter((ac) => ac.lat != null && ac.lon != null && ac.alt_baro !== "ground" && (ac.seen_pos ?? 0) <= MAX_POSITION_AGE_S)
-      .map((ac) => {
-        const callsign = (ac.flight ?? "").trim();
-        return {
-          key: `${ac.hex}:${callsign}`,
-          hex: ac.hex,
-          callsign,
-          type: ac.t,
-          reg: ac.r,
-          alt: typeof ac.alt_baro === "number" ? ac.alt_baro : null,
-          track: ac.track ?? null,
-          lat: ac.lat,
-          lon: ac.lon,
-        };
-      });
-  } catch (err) {
-    console.error(`adsb.lol poll failed: ${err}`);
-    await recordFailure(env, "adsb", `⚠️ FlightRadar checker: adsb.lol has failed ${FAILURES_BEFORE_WARN}+ times in a row (${err}). Falling back to FR24 polling, which uses credits.`);
-    return null;
-  }
-}
-
-// Paid fallback when adsb.lol is down: same data as before, capped so one poll can't burn the month.
-async function fetchFr24Positions(env) {
-  const today = localTime(env.TIMEZONE).date;
-  const credits = await creditTracker(env, today);
-  if (!(await credits.canSpend(CREDITS_POSITIONS_FULL))) return null;
-  const rows = await fr24Get(env, "/api/live/flight-positions/full", { bounds: env.BOUNDS, limit: "15" }, CREDITS_POSITIONS_FULL, credits);
-  return rows?.map((f) => ({
-    key: `${(f.hex ?? f.fr24_id).toLowerCase()}:${(f.callsign ?? "").trim()}`,
-    hex: f.hex,
-    callsign: (f.callsign ?? "").trim(),
-    flight: f.flight,
-    type: f.type,
-    reg: f.reg,
-    alt: f.alt,
-    track: f.track,
-    lat: f.lat,
-    lon: f.lon,
-    origIcao: f.orig_icao,
-    destIcao: f.dest_icao,
-    routeKnown: true,
-  })) ?? null;
-}
-
-// Route for a newly seen aircraft: FR24 flight summary (1 credit), then adsbdb (free, static routes).
-async function lookupRoute(env, a, credits) {
-  if (!AIRLINE_CALLSIGN.test(a.callsign)) return {};
-
-  if (await credits.canSpend(CREDITS_SUMMARY_LIGHT)) {
-    const now = Date.now();
-    const rows = await fr24Get(env, "/api/flight-summary/light", {
-      callsigns: a.callsign,
-      flight_datetime_from: fr24Datetime(now - 18 * 3600 * 1000),
-      flight_datetime_to: fr24Datetime(now),
-      sort: "desc",
-      limit: "1",
-    }, CREDITS_SUMMARY_LIGHT, credits);
-    const f = rows?.[0];
-    if (f && (f.orig_icao || f.dest_icao)) {
-      return {
-        flight: f.flight,
-        type: a.type || f.type,
-        reg: a.reg || f.reg,
-        origIcao: f.orig_icao,
-        destIcao: f.dest_icao_actual || f.dest_icao,
-      };
-    }
-  }
-  return await adsbdbRoute(env, a);
-}
-
-async function adsbdbRoute(env, a) {
-  try {
-    const base = devOverride(env.ADSBDB_BASE, ADSBDB_PROD);
-    const res = await fetchWithTimeout(`${base}/v0/callsign/${encodeURIComponent(a.callsign)}`, { headers: { "User-Agent": UA } });
-    if (!res.ok) return {};
-    const route = (await res.json()).response?.flightroute;
-    const { origin, destination } = route ?? {};
-    if (!origin || !destination || a.track == null) return {};
-    // adsbdb stores one direction per callsign; trust it only if the aircraft is heading that way.
-    const headingTo = (ap) => angleDiff(a.track, bearing(a.lat, a.lon, ap.latitude, ap.longitude)) < 90;
-    const flight = route.callsign_iata || undefined;
-    if (headingTo(destination)) return { flight, origIcao: origin.icao_code, destIcao: destination.icao_code };
-    if (headingTo(origin)) return { flight, origIcao: destination.icao_code, destIcao: origin.icao_code };
-  } catch (err) {
-    console.error(`adsbdb lookup failed for ${a.callsign}: ${err}`);
-  }
-  return {};
 }
 
 function buildMessage(a, count) {
@@ -353,7 +254,7 @@ async function fr24Get(env, path, params, creditsPerRow, credits) {
   if (!res.ok) {
     console.error(`FR24 API error ${res.status}: ${await res.text()}`);
     if (res.status === 401 || res.status === 403) {
-      await warnOnce(env, "fr24-auth", `⚠️ FlightRadar checker: FR24 rejected the API token (${res.status}). Routes will come from adsbdb only until it's replaced.`);
+      await warnOnce(env, "fr24-auth", `⚠️ FlightRadar checker: FR24 rejected the API token (${res.status}). No alerts until it's replaced.`);
     } else if (res.status === 402 || res.status === 429) {
       await warnOnce(env, "fr24-credits", `⚠️ FlightRadar checker: FR24 API returned ${res.status} — credits may be exhausted or rate limited.`);
     } else {
@@ -367,21 +268,26 @@ async function fr24Get(env, path, params, creditsPerRow, credits) {
   return rows;
 }
 
-// Daily circuit breaker: stop spending FR24 credits once today's estimate passes the budget.
+// Circuit breaker on estimated FR24 spend: stops polling once the last 30 days reach MAX_MONTHLY_CREDITS,
+// so busy days can borrow from quiet ones. DAILY_CREDIT_BUDGET optionally adds a hard per-day cap.
 async function creditTracker(env, today) {
-  const budget = Number(env.DAILY_CREDIT_BUDGET) || Math.floor(Number(env.MAX_MONTHLY_CREDITS || 30000) / 30);
+  const monthly = Number(env.MAX_MONTHLY_CREDITS) || 30000;
+  const daily = Number(env.DAILY_CREDIT_BUDGET) || Infinity;
   let used = null;
   return {
     async canSpend(n) {
       if (used === null) {
-        used = (await env.DB.prepare("SELECT used FROM credits WHERE day = ?").bind(today).first("used")) ?? 0;
+        const since = localTime(env.TIMEZONE, new Date(Date.now() - 29 * 86_400_000)).date;
+        used = await env.DB.prepare(
+          "SELECT COALESCE(SUM(used), 0) AS month, COALESCE(SUM(CASE WHEN day = ? THEN used END), 0) AS today FROM credits WHERE day >= ?"
+        ).bind(today, since).first();
       }
-      if (used + n <= budget) return true;
-      await warnOnce(env, "credit-budget", `⚠️ FlightRadar checker: today's FR24 budget of ${budget} credits is used up. Routes fall back to adsbdb until midnight.`);
+      if (used.month + n <= monthly && used.today + n <= daily) return true;
+      await warnOnce(env, "credit-budget", `⚠️ FlightRadar checker: FR24 credit budget reached (~${used.today} today, ~${used.month} in the last 30 days). Polling is paused until there's room again.`);
       return false;
     },
     async spend(n) {
-      used = (used ?? 0) + n;
+      if (used) { used.month += n; used.today += n; }
       await env.DB.prepare("INSERT INTO credits (day, used) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET used = used + excluded.used")
         .bind(today, n).run();
     },
@@ -415,6 +321,15 @@ async function recordFailure(env, source, warning) {
 
 async function clearFailures(env, source) {
   await env.DB.prepare("UPDATE failures SET streak = 0 WHERE source = ? AND streak > 0").bind(source).run();
+}
+
+async function getCounter(env, name) {
+  return (await env.DB.prepare("SELECT value FROM counters WHERE name = ?").bind(name).first("value")) ?? 0;
+}
+
+async function setCounter(env, name, value) {
+  await env.DB.prepare("INSERT INTO counters (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value")
+    .bind(name, value).run();
 }
 
 // ---------- Discord ----------
@@ -479,38 +394,6 @@ function devOverride(value, prod) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function parseBounds(s) {
-  const [north, south, west, east] = String(s).split(",").map(Number);
-  if ([north, south, west, east].some(Number.isNaN)) throw new Error("BOUNDS must be north,south,west,east");
-  return { north, south, west, east };
-}
-
-function inBounds(a, b) {
-  return a.lat <= b.north && a.lat >= b.south && a.lon >= b.west && a.lon <= b.east;
-}
-
-const toRad = (d) => (d * Math.PI) / 180;
-
-function distanceNm(lat1, lon1, lat2, lon2) {
-  const h = Math.sin(toRad(lat2 - lat1) / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lon2 - lon1) / 2) ** 2;
-  return 2 * 3440.065 * Math.asin(Math.sqrt(h));
-}
-
-function bearing(lat1, lon1, lat2, lon2) {
-  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-function angleDiff(a, b) {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
-
-function fr24Datetime(ms) {
-  return new Date(ms).toISOString().slice(0, 19); // YYYY-MM-DDTHH:MM:SS, UTC
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

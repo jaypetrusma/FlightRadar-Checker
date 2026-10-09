@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS claims (
   claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- One row per aircraft per local day; the primary key is the dedup.
+-- One row per flight per local day; the primary key is the dedup.
 CREATE TABLE IF NOT EXISTS sightings (
   day TEXT NOT NULL,          -- local date, YYYY-MM-DD
-  aircraft TEXT NOT NULL,     -- "<hex>:<callsign>"
+  aircraft TEXT NOT NULL,     -- FR24 fr24_id
   seen_at INTEGER NOT NULL,   -- epoch ms of first sighting
   callsign TEXT,
   dest TEXT,                  -- destination ICAO, NULL if unknown
@@ -29,8 +29,14 @@ CREATE TABLE IF NOT EXISTS credits (
   used INTEGER NOT NULL DEFAULT 0
 );
 
--- Consecutive failures per upstream ("adsb", "fr24").
+-- Consecutive failures per upstream ("fr24").
 CREATE TABLE IF NOT EXISTS failures (
   source TEXT PRIMARY KEY,
   streak INTEGER NOT NULL DEFAULT 0
+);
+
+-- Small named counters, e.g. "empty-polls" for the quiet-period back-off.
+CREATE TABLE IF NOT EXISTS counters (
+  name TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
 );
