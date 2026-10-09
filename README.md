@@ -21,6 +21,8 @@ cd worker
 npx wrangler@4 login                          # opens browser OAuth
 npx wrangler@4 kv namespace create STATE      # prints an id
 # → paste that id into wrangler.jsonc replacing REPLACE_WITH_KV_NAMESPACE_ID
+npx wrangler@4 d1 create flightradar-checker  # prints a database_id for wrangler.jsonc
+npx wrangler@4 d1 execute flightradar-checker --remote --command "CREATE TABLE claims (name TEXT PRIMARY KEY, claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
 
 npx wrangler@4 secret put FR24_TOKEN               # FR24 API bearer token
 npx wrangler@4 secret put BOUNDS                   # bounding box "north,south,west,east"
@@ -58,6 +60,7 @@ Every Monday (same tick as the weekly scoreboard) the worker also posts a credit
 - Cron fires every minute (UTC); the worker exits before calling FR24 outside active hours, so overnight costs nothing.
 - Every flight in the FR24 response is alerted (not just the first), with graceful fallbacks — a VFR putterer with no flight plan shows as `✈️ **SPTR12** overhead at 4,500 ft — destination unknown`.
 - Dedup state lives in KV under one key: a flight re-alerts only if it's still/again overhead **45+ minutes** after its last alert (`REALERT_AFTER_MS` in `src/index.js`).
+- The daily wrap-up is claimed in D1 (`claims` table) before it posts, so overlapping cron runs can't send it twice. KV is eventually consistent and can't guarantee that.
 
 ## Local testing (no credits, no real webhook)
 

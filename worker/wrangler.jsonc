@@ -16,6 +16,16 @@
     }
   ],
 
+  // Once-per-day claims (e.g. the daily summary). Needs the table:
+  //   CREATE TABLE claims (name TEXT PRIMARY KEY, claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flightradar-checker",
+      "database_id": "d072ccf5-bdea-41ba-a2b0-c2c517ab3103"
+    }
+  ],
+
   "vars": {
     "TIMEZONE": "Australia/Sydney",
     "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time

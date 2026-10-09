@@ -112,9 +112,11 @@ function airportName(iata) {
 
 async function maybeSendDailySummary(env) {
   const today = localDate(env.TIMEZONE);
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
-  if (state.summaryDate === today) return;
+  // KV is eventually consistent, so two close cron runs can both miss a "sent" flag there.
+  // Claim the day in D1 instead: the insert succeeds for exactly one run.
+  if (!(await claimOnce(env, `daily-summary:${today}`))) return;
 
+  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
   const count = state.countDate === today ? (state.count ?? 0) : 0;
   const destinations = state.countDate === today ? (state.destinations ?? {}) : {};
 
@@ -149,9 +151,12 @@ async function maybeSendDailySummary(env) {
     }
   }
 
-  state.summaryDate = today;
-  await env.STATE.put(STATE_KEY, JSON.stringify(state));
   await sendLeaderboardWebhook(env, msg);
+}
+
+async function claimOnce(env, name) {
+  const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO claims (name) VALUES (?)").bind(name).run();
+  return meta.changes === 1;
 }
 
 async function maybeSendWeeklyScoreboard(env, weekday, hour) {
