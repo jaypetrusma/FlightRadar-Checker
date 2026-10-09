@@ -4,20 +4,21 @@
   "main": "src/index.js",
   "compatibility_date": "2026-07-01",
 
-  // Fires every minute (UTC). Active hours are gated in code using TIMEZONE.
+  // Cron-only Worker: no public workers.dev or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // UTC, covering both AEST and AEDT. Keep in sync with the *_CRON constants in src/index.js.
+  // If you change ACTIVE_START/ACTIVE_END, widen the first one to match.
   "triggers": {
-    "crons": ["* * * * *"]
+    "crons": [
+      "* 0-12,20-23 * * *",  // local 7am-11pm: poll every POLL_INTERVAL_SECONDS
+      "*/5 12-13 * * *",     // local 11pm: daily wrap-up
+      "*/5 20-21 * * SUN"    // local Monday 7am: weekly scoreboard + credit report
+    ]
   },
 
-  "kv_namespaces": [
-    {
-      "binding": "STATE",
-      "id": "9bdbe366108d48fdbaff447e6380f252"
-    }
-  ],
-
-  // Once-per-day claims (e.g. the daily summary). Needs the table:
-  //   CREATE TABLE claims (name TEXT PRIMARY KEY, claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+  // All state lives here (strongly consistent, unlike KV). Create tables with schema.sql.
   "d1_databases": [
     {
       "binding": "DB",
@@ -29,15 +30,16 @@
   "vars": {
     "TIMEZONE": "Australia/Sydney",
     "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time
-    "ACTIVE_END": "23",    // hour (exclusive) polling stops, local time
-    "POLL_EVERY_N_MINUTES": "1", // raise to 2 or 3 if FR24 credits run tight
-    "MAX_MONTHLY_CREDITS": "30000", // your FR24 plan's monthly credit allowance, for the weekly credit report
+    "ACTIVE_END": "23",    // hour (exclusive) polling stops and the wrap-up posts, local time
+    "POLL_INTERVAL_SECONDS": "30", // adsb.lol poll interval (10-60); free, so no credit cost
+    "MAX_MONTHLY_CREDITS": "30000", // FR24 plan allowance: weekly credit report, and daily budget = this / 30
+    // "DAILY_CREDIT_BUDGET": "1000", // optional override for the daily FR24 credit circuit breaker
     "STOP_ON": "2026-10-31" // local date (YYYY-MM-DD) the worker goes permanently idle; remove to run indefinitely
   }
 
-  // Secrets (set with: npx wrangler secret put <NAME>):
-  //   FR24_TOKEN               - FR24 API bearer token
+  // Secrets (set with: npx wrangler@4.149.0 secret put <NAME>):
+  //   FR24_TOKEN               - FR24 API bearer token (route lookups, and fallback polling if adsb.lol is down)
   //   BOUNDS                   - bounding box "north,south,west,east" (kept secret)
   //   WEBHOOK_URL              - Discord/webhook endpoint for per-flight alerts
-  //   LEADERBOARD_WEBHOOK_URL  - Discord/webhook endpoint for daily/weekly leaderboards and credit warnings
+  //   LEADERBOARD_WEBHOOK_URL  - Discord/webhook endpoint for daily/weekly leaderboards and warnings
 }

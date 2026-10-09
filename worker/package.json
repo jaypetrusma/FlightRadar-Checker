@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
+    "db:init": "wrangler d1 execute flightradar-checker --remote --file schema.sql",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"
   },
   "devDependencies": {
-    "wrangler": "^4"
+    "wrangler": "4.149.0"
   }
 }
