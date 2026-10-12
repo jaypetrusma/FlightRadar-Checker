@@ -170,11 +170,11 @@ export async function dailySummary(env) {
 }
 
 export async function weeklyReports(env) {
-  const { date: today, hour, weekday } = localTime(env.TIMEZONE);
-  // Monday = 1, first tick at or after 7am
-  if (weekday !== 1 || hour < 7) return;
+  const { date: today, hour, minute, weekday } = localTime(env.TIMEZONE);
+  // Monday = 1, 7am-9am only (the weekly cron's window), so a stray run later in the day does nothing.
+  if (weekday !== 1 || hour < 7 || hour >= 9) return;
   await weeklyScoreboard(env, today);
-  await weeklyCreditReport(env, today);
+  await weeklyCreditReport(env, today, { lastTry: hour === 8 && minute >= 50 });
 }
 
 async function weeklyScoreboard(env, today) {
@@ -192,20 +192,21 @@ async function weeklyScoreboard(env, today) {
   if (!(await postWebhook(env.LEADERBOARD_WEBHOOK_URL, [msg], { mentionEveryone: true }))) await releaseClaim(env, claim);
 }
 
-async function weeklyCreditReport(env, today) {
+async function weeklyCreditReport(env, today, { lastTry }) {
   const claim = `weekly-credit-report:${today}`;
   if (!(await claimOnce(env, claim))) return;
 
   const maxCredits = Number(env.MAX_MONTHLY_CREDITS || 0);
   let used30d, used7d;
   try {
-    // Sequential, so the report's two calls never land in the same instant as a poll.
+    // FR24 returns 429 for a second /api/usage call within about a minute, so space them out.
     used30d = await fetchUsageCredits(env, "30d");
+    await sleep(65_000);
     used7d = await fetchUsageCredits(env, "7d");
   } catch (err) {
     console.error(`Credit usage check failed: ${err}`);
-    await releaseClaim(env, claim); // the weekly cron retries every 5 minutes this morning
-    await warnOnce(env, "credit-report", `⚠️ FlightRadar checker: weekly credit report failed (${err}). Retrying every 5 minutes this morning.`);
+    await releaseClaim(env, claim); // the weekly cron retries every 5 minutes until 9am
+    if (lastTry) await warnOnce(env, "credit-report", `⚠️ FlightRadar checker: weekly credit report failed all morning (${err}).`);
     return;
   }
 
