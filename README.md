@@ -43,7 +43,7 @@ That's it, it's live. Watch it run with `npx wrangler@4.149.0 tail`.
 | `BACKOFF_MAX_MINUTES` | `3` | Slowest poll interval while quiet. `1` turns back-off off |
 | `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's allowance. Used by the weekly credit report; polling pauses once the last 30 days' estimate reaches it |
 | `DAILY_CREDIT_BUDGET` | unset | Optional hard per-day cap on FR24 credits |
-| `CATEGORIES` | unset | Optional FR24 category filter, e.g. `P,C` for passenger and cargo only. Skips light aircraft and helicopters, which can loiter in the box and get charged every poll |
+| `CATEGORIES` | `P,C` | FR24 category filter: passenger and cargo only. Skips light aircraft, helicopters and military, which can loiter in the box and get charged every poll. Remove it to alert on everything |
 | `STOP_ON` | `2026-10-31` | Local date (`YYYY-MM-DD`) from which the worker does nothing at all. Remove it to run indefinitely |
 
 The cron schedules are in UTC and cover both AEST and AEDT. If you change `ACTIVE_START`/`ACTIVE_END` or `TIMEZONE`, update `triggers.crons` and the matching `*_CRON` constants at the top of `src/index.js`.
