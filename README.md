@@ -40,7 +40,7 @@ That's it, it's live. Watch it run with `npx wrangler@4.149.0 tail`.
 | `ACTIVE_START` | `6` | First local hour (inclusive) polling runs |
 | `ACTIVE_END` | `23` | Local hour (exclusive) polling stops and the wrap-up posts, i.e. 6am to 11pm |
 | `BACKOFF_AFTER_EMPTY_POLLS` | `10` | After this many empty polls in a row, poll every 2 minutes (every 3 after twice this). The next flight seen resets it to every minute |
-| `BACKOFF_MAX_MINUTES` | `3` | Slowest poll interval while quiet. `1` turns back-off off |
+| `BACKOFF_MAX_MINUTES` | `1` | Slowest poll interval while quiet. `1` (the default) turns back-off off: a flight can cross the box in under 2 minutes, so slower polling misses it. Raise to 2 or 3 only to save credits |
 | `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's allowance. Used by the weekly credit report; polling pauses once the last 30 days' estimate reaches it |
 | `DAILY_CREDIT_BUDGET` | unset | Optional hard per-day cap on FR24 credits |
 | `CATEGORIES` | `P,C` | FR24 category filter: passenger and cargo only. Skips light aircraft, helicopters and military, which can loiter in the box and get charged every poll. Remove it to alert on everything |
@@ -56,7 +56,7 @@ FR24 charges 1 credit for an empty result, 6 per flight from live positions (lig
 
 - **Polling**: live positions (light) every minute, with `limit=15` so one call can't run away. Light has no route or aircraft details, so:
 - **Details**: one flight summary call per poll covers every newly seen flight (by `fr24_id`), 1 credit each. It provides the flight number, type, registration, origin and destination. ETA isn't available from it.
-- **Back-off**: empty polls still cost 1 credit, so after `BACKOFF_AFTER_EMPTY_POLLS` empty polls the worker drops to every 2, then 3, minutes until it sees a flight.
+- **Back-off** (off by default): empty polls still cost 1 credit, so with `BACKOFF_MAX_MINUTES` above 1 the worker drops to every 2 or 3 minutes after `BACKOFF_AFTER_EMPTY_POLLS` empty polls. Off because flights can cross the box faster than that.
 
 Rough cost at ~66 flights a day, each seen on about 2 polls: ~800 credits a day on flights plus ~400 on empty polls, so ~25k to 35k a month. That's around the Explorer plan's 30k. `CATEGORIES=P,C`, a smaller box, or a longer back-off all bring it down.
 

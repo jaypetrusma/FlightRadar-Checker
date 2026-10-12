@@ -35,7 +35,7 @@
     "ACTIVE_START": "6",   // first hour (inclusive) polling is active, local time
     "ACTIVE_END": "23",    // hour (exclusive) polling stops and the wrap-up posts, local time
     "BACKOFF_AFTER_EMPTY_POLLS": "10", // after this many empty polls in a row, poll every 2 min (then 3 after 2x this)
-    "BACKOFF_MAX_MINUTES": "3",        // slowest poll interval while quiet; "1" turns back-off off
+    "BACKOFF_MAX_MINUTES": "1",        // slowest poll interval while quiet; "1" = off (always every minute, so short crossings aren't missed)
     "MAX_MONTHLY_CREDITS": "30000", // FR24 plan allowance: weekly credit report, and polling pauses at this over 30 days
     // "DAILY_CREDIT_BUDGET": "1500", // optional hard per-day cap on FR24 credits
     "CATEGORIES": "P,C",             // FR24 category filter: passenger + cargo only (skips GA/helicopters); remove to alert on everything
