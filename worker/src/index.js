@@ -5,7 +5,7 @@ import airports from "./airports.json"; // ICAO -> [IATA, name]
 
 // Keep these in sync with "triggers.crons" in wrangler.jsonc. All are UTC and cover both AEST and AEDT;
 // each job also gates itself on local time, so the extra hours are no-ops.
-const POLL_CRON = "* 0-12,20-23 * * *";   // local 7am-11pm: poll the sky
+const POLL_CRON = "* 0-12,19-23 * * *";   // local 6am-11pm: poll the sky
 const SUMMARY_CRON = "*/5 12-13 * * *";   // local 11pm: daily wrap-up (retries every 5 min if Discord fails)
 const WEEKLY_CRON = "*/5 20-21 * * SUN";  // local Monday 7am: weekly scoreboard + credit report
 

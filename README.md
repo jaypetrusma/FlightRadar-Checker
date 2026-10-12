@@ -37,8 +37,8 @@ That's it, it's live. Watch it run with `npx wrangler@4.149.0 tail`.
 | Var | Default | Meaning |
 |---|---|---|
 | `TIMEZONE` | `Australia/Sydney` | Local zone for active hours, the wrap-up and the weekly posts |
-| `ACTIVE_START` | `7` | First local hour (inclusive) polling runs |
-| `ACTIVE_END` | `23` | Local hour (exclusive) polling stops and the wrap-up posts, i.e. 7am to 11pm |
+| `ACTIVE_START` | `6` | First local hour (inclusive) polling runs |
+| `ACTIVE_END` | `23` | Local hour (exclusive) polling stops and the wrap-up posts, i.e. 6am to 11pm |
 | `BACKOFF_AFTER_EMPTY_POLLS` | `10` | After this many empty polls in a row, poll every 2 minutes (every 3 after twice this). The next flight seen resets it to every minute |
 | `BACKOFF_MAX_MINUTES` | `3` | Slowest poll interval while quiet. `1` turns back-off off |
 | `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's allowance. Used by the weekly credit report; polling pauses once the last 30 days' estimate reaches it |
@@ -110,7 +110,7 @@ cd worker
 npx wrangler@4.149.0 d1 execute flightradar-checker --local --file schema.sql
 npx wrangler@4.149.0 dev --test-scheduled --var TIMEZONE:UTC   # pick a zone where it's currently active hours
 # in another terminal (cron strings must match wrangler.jsonc; anything else runs every job):
-curl "http://127.0.0.1:8787/__scheduled?cron=*+0-12,20-23+*+*+*"
+curl "http://127.0.0.1:8787/__scheduled?cron=*+0-12,19-23+*+*+*"
 ```
 
 `FR24_BASE` lets you point the worker at a mock server; leave it unset in production.
