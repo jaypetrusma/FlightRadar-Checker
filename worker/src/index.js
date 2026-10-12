@@ -199,10 +199,13 @@ async function weeklyCreditReport(env, today) {
   const maxCredits = Number(env.MAX_MONTHLY_CREDITS || 0);
   let used30d, used7d;
   try {
-    [used30d, used7d] = await Promise.all([fetchUsageCredits(env, "30d"), fetchUsageCredits(env, "7d")]);
+    // Sequential, so the report's two calls never land in the same instant as a poll.
+    used30d = await fetchUsageCredits(env, "30d");
+    used7d = await fetchUsageCredits(env, "7d");
   } catch (err) {
     console.error(`Credit usage check failed: ${err}`);
-    await releaseClaim(env, claim);
+    await releaseClaim(env, claim); // the weekly cron retries every 5 minutes this morning
+    await warnOnce(env, "credit-report", `⚠️ FlightRadar checker: weekly credit report failed (${err}). Retrying every 5 minutes this morning.`);
     return;
   }
 
@@ -229,7 +232,8 @@ async function weeklyCreditReport(env, today) {
 }
 
 async function fetchUsageCredits(env, period) {
-  const res = await fetchWithTimeout(`${devOverride(env.FR24_BASE, FR24_PROD)}/api/usage?period=${period}`, { headers: fr24Headers(env) });
+  // Usage aggregates FR24's request log, so give it longer than the 10 s default.
+  const res = await fetchWithTimeout(`${devOverride(env.FR24_BASE, FR24_PROD)}/api/usage?period=${period}`, { headers: fr24Headers(env) }, 30_000);
   if (!res.ok) throw new Error(`FR24 usage API returned ${res.status} for period=${period}`);
   const rows = (await res.json()).data ?? [];
   return rows.reduce((sum, row) => sum + (row.credits ?? 0), 0);
@@ -379,8 +383,8 @@ function escapeMd(s) {
 
 // ---------- utilities ----------
 
-function fetchWithTimeout(url, init = {}) {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+function fetchWithTimeout(url, init = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
 }
 
 // Base-URL overrides are for local mocks only; never send the FR24 token anywhere else.

@@ -80,6 +80,7 @@ Every Monday the worker also posts a credit report from FR24's `/api/usage` endp
 - A flight (FR24 `fr24_id`) alerts once per local day, however long it stays in the box.
 - All new flights from one poll go out as one Discord message, and a 429 from Discord is retried once after `retry_after`.
 - Sightings and credit tallies are kept for 90 days; daily totals for the scoreboard are kept forever.
+- Workers Logs (`observability`) are on, so errors from past runs can be read in the dashboard for a few days, not just live via `tail`.
 
 ## Security notes
 
