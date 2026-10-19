@@ -51,7 +51,7 @@ FR24 charges per result: **1 credit** for an empty poll, **~8 credits per flight
 
 If credits run out, the FR24 API returns 402/429 — the worker sends a warning to the leaderboard webhook (at most once per day) so exhaustion doesn't go silent.
 
-Every Monday (same tick as the weekly scoreboard) the worker also posts a credit report to the leaderboard webhook, pulled from FR24's own `/api/usage` endpoint: credits used in the last 30 days, how much of `MAX_MONTHLY_CREDITS` that leaves, that week's daily average, and whether the current rate is projected to stay within the limit or run out early. FR24's usage windows are rolling (last 7/30 days), not calendar-month, so treat it as a close approximation rather than an exact billing-period figure.
+Every Monday (same tick as the weekly scoreboard) the worker also posts a credit report to the leaderboard webhook, pulled from FR24's own `/api/usage` endpoint: credits used in the last 30 days, how much of `MAX_MONTHLY_CREDITS` that leaves, that week's daily average, and whether the current rate is projected to stay within the limit or run out early. FR24's usage windows are rolling (last 7/30 days), not calendar-month, so treat it as a close approximation rather than an exact billing-period figure. If the usage check fails, that week's report is skipped and a warning goes to the same webhook (sharing the once-a-day limit above).
 
 ## How the worker behaves
 

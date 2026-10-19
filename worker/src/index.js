@@ -206,6 +206,10 @@ async function maybeSendWeeklyCreditReport(env, weekday, hour) {
     ]);
   } catch (err) {
     console.error(`Credit usage check failed: ${err}`);
+    // Counts as this Monday's report, or it would call FR24 again every minute all day.
+    state.creditReportDate = today;
+    await env.STATE.put(STATE_KEY, JSON.stringify(state));
+    await warnOnce(env, `⚠️ FlightRadar checker: credit usage check failed, so there is no credit report this week (${err.message}).`);
     return;
   }
 
