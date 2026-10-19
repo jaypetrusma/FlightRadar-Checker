@@ -1,5 +1,9 @@
 ﻿<#  THIS SCRIPT IS DESIGNED TO GET THE DESTINATION OF FLIGHTS THAT FLY OVER MY HOUSE BC I HAVE AN INATE DESIRE TO KNOW  #>
 
+<#  Retired: the worker in worker/ replaced this script. The FR24 fetch below is commented out on
+    purpose so running this by accident spends no FR24 credits and posts nothing. Don't restore
+    it; change the worker instead. Kept for reference only.  #>
+
 $APIToken = Get-Secret -Name FR24Token -AsPlainText
 $queryBounds = Get-Secret -Name BoundingBox -AsPlainText #I'm not doxxing myself
 $webhookURL = Get-Secret -Name WebhookURL -AsPlainText #no spamming my webhooks

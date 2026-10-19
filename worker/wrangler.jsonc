@@ -18,6 +18,9 @@
 
   "vars": {
     "TIMEZONE": "Australia/Sydney",
+    // Dedup saves state on each poll that sees a flight, so a busy sky costs about one KV
+    // write a minute: 960 a day for 7 to 23, close to the free tier's 1,000. Wider hours can
+    // run past it; a higher POLL_EVERY_N_MINUTES cuts writes as well as credits.
     "ACTIVE_START": "7",   // first hour (inclusive) polling is active, local time
     "ACTIVE_END": "23",    // hour (exclusive) polling stops, local time
     "POLL_EVERY_N_MINUTES": "1", // raise to 2 or 3 if FR24 credits run tight
