@@ -45,6 +45,8 @@ That's it — it's live. Watch it run with `npx wrangler@4 tail`.
 
 Redeploy after changing: `npx wrangler@4 deploy`.
 
+Keep an eye on KV writes when changing the active hours. Dedup saves its state on each poll that sees a flight, so a busy sky costs about one KV write a minute: 960 a day for the default 7am to 11pm, close to the Workers free tier's 1,000 writes a day. Raising `POLL_EVERY_N_MINUTES` cuts writes as well as credits.
+
 ## FR24 credit budget
 
 FR24 charges per result: **1 credit** for an empty poll, **~8 credits per flight** returned (and a flight still in the box next poll is charged again). At 60 s × 16 h/day that's ~28,800 credits/month baseline — tight against the Explorer plan's 30,000. Check usage in the [FR24 API dashboard](https://fr24api.flightradar24.com) after the first day or two; if it's trending over, set `POLL_EVERY_N_MINUTES = "2"` (halves the baseline to ~14,400) or narrow the active hours.
