@@ -43,7 +43,7 @@ That's it — it's live. Watch it run with `npx wrangler@4 tail`.
 | `MAX_MONTHLY_CREDITS` | `30000` | Your FR24 plan's monthly credit allowance — used only for the weekly credit report below |
 | `STOP_ON` | `2026-10-31` | Local date (`YYYY-MM-DD`) from which the worker does nothing at all: no FR24 polls, alerts, or reports. Remove it to run indefinitely |
 
-Redeploy after changing: `npx wrangler@4 deploy`.
+Changes deploy on their own once they reach `main`: Cloudflare Workers Builds is connected to this repo and redeploys the worker on every push to `main`. Pull request branches get a preview build only, so nothing goes live until the PR is merged. To deploy by hand without going through `main`, run `npx wrangler@4 deploy` in `worker/`.
 
 Keep an eye on KV writes when changing the active hours. Dedup saves its state on each poll that sees a flight, so a busy sky costs about one KV write a minute: 960 a day for the default 7am to 11pm, close to the Workers free tier's 1,000 writes a day. Raising `POLL_EVERY_N_MINUTES` cuts writes as well as credits.
 
