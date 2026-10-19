@@ -8,7 +8,7 @@ The `#12 today` counter tracks flights alerted since midnight Sydney time and re
 
 Runs entirely on **Cloudflare Workers free tier** — no machine at home needs to be on. A cron trigger fires every minute; the worker polls the FR24 API during active hours, deduplicates via Workers KV so each flight alerts once, and posts to the webhook.
 
-`FR24DestScript.ps1` is the original manual PowerShell version, kept for reference.
+`FR24DestScript.ps1` is the original manual PowerShell version, kept for reference. Its FR24 fetch is disabled on purpose.
 
 ## One-time setup
 
@@ -88,12 +88,10 @@ Unit tests stub `fetch` and KV, so they need no `npm install`, credits or webhoo
 
 ## Regenerating `worker/src/airports.json`
 
-If `iata.csv` is updated:
+If `iata.csv` is updated, run:
 
 ```powershell
-$map = [ordered]@{}
-Import-Csv .\iata.csv | Where-Object { $_.iata -and $_.airport } |
-  ForEach-Object { $map[$_.iata] = ($_.airport -replace '\s*\([^)]*\)\s*$', '') }
-[IO.File]::WriteAllText("$PWD\worker\src\airports.json",
-  ($map | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding $false))
+node scripts/airports.mjs
 ```
+
+It writes the same bytes the original PowerShell one-liner did, so the diff shows only what changed in `iata.csv`.
