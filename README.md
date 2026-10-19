@@ -8,7 +8,7 @@ The `#12 today` counter tracks flights alerted since midnight Sydney time and re
 
 Runs entirely on **Cloudflare Workers free tier** — no machine at home needs to be on. A cron trigger fires every minute; the worker polls the FR24 API during active hours, deduplicates via Workers KV so each flight alerts once, and posts to the webhook.
 
-`FR24DestScript.ps1` is the original manual PowerShell version, kept for reference.
+`FR24DestScript.ps1` is the original manual PowerShell version, kept for reference. Its FR24 fetch is disabled on purpose.
 
 ## One-time setup
 
@@ -45,13 +45,15 @@ That's it — it's live. Watch it run with `npx wrangler@4 tail`.
 
 Redeploy after changing: `npx wrangler@4 deploy`.
 
+Keep an eye on KV writes when changing the active hours. Dedup saves its state on each poll that sees a flight, so a busy sky costs about one KV write a minute: 960 a day for the default 7am to 11pm, close to the Workers free tier's 1,000 writes a day. Raising `POLL_EVERY_N_MINUTES` cuts writes as well as credits.
+
 ## FR24 credit budget
 
 FR24 charges per result: **1 credit** for an empty poll, **~8 credits per flight** returned (and a flight still in the box next poll is charged again). At 60 s × 16 h/day that's ~28,800 credits/month baseline — tight against the Explorer plan's 30,000. Check usage in the [FR24 API dashboard](https://fr24api.flightradar24.com) after the first day or two; if it's trending over, set `POLL_EVERY_N_MINUTES = "2"` (halves the baseline to ~14,400) or narrow the active hours.
 
 If credits run out, the FR24 API returns 402/429 — the worker sends a warning to the leaderboard webhook (at most once per day) so exhaustion doesn't go silent.
 
-Every Monday (same tick as the weekly scoreboard) the worker also posts a credit report to the leaderboard webhook, pulled from FR24's own `/api/usage` endpoint: credits used in the last 30 days, how much of `MAX_MONTHLY_CREDITS` that leaves, that week's daily average, and whether the current rate is projected to stay within the limit or run out early. FR24's usage windows are rolling (last 7/30 days), not calendar-month, so treat it as a close approximation rather than an exact billing-period figure.
+Every Monday (same tick as the weekly scoreboard) the worker also posts a credit report to the leaderboard webhook, pulled from FR24's own `/api/usage` endpoint: credits used in the last 30 days, how much of `MAX_MONTHLY_CREDITS` that leaves, that week's daily average, and whether the current rate is projected to stay within the limit or run out early. FR24's usage windows are rolling (last 7/30 days), not calendar-month, so treat it as a close approximation rather than an exact billing-period figure. If the usage check fails, that week's report is skipped and a warning goes to the same webhook (sharing the once-a-day limit above).
 
 ## How the worker behaves
 
@@ -82,14 +84,14 @@ curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"
 
 `FR24_BASE` lets you point the worker at a mock server; leave it unset in production (it defaults to the real API).
 
+Unit tests stub `fetch` and KV, so they need no `npm install`, credits or webhook: `cd worker` then `npm test` (Node 22 or later).
+
 ## Regenerating `worker/src/airports.json`
 
-If `iata.csv` is updated:
+If `iata.csv` is updated, run:
 
 ```powershell
-$map = [ordered]@{}
-Import-Csv .\iata.csv | Where-Object { $_.iata -and $_.airport } |
-  ForEach-Object { $map[$_.iata] = ($_.airport -replace '\s*\([^)]*\)\s*$', '') }
-[IO.File]::WriteAllText("$PWD\worker\src\airports.json",
-  ($map | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding $false))
+node scripts/airports.mjs
 ```
+
+It writes the same bytes the original PowerShell one-liner did, so the diff shows only what changed in `iata.csv`.
