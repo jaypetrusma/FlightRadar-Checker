@@ -219,7 +219,9 @@ async function maybeSendWeeklyCreditReport(env, weekday, hour) {
   let msg = `📊 **Weekly credit check** — ~${Math.round(used30d).toLocaleString("en-AU")} credits used in the last 30 days`;
   if (maxCredits > 0) {
     const remaining = maxCredits - used30d;
-    msg += ` of ${maxCredits.toLocaleString("en-AU")} (~${Math.round(remaining).toLocaleString("en-AU")} remaining).`;
+    msg += remaining >= 0
+      ? ` of ${maxCredits.toLocaleString("en-AU")} (~${Math.round(remaining).toLocaleString("en-AU")} remaining).`
+      : ` of ${maxCredits.toLocaleString("en-AU")} (~${Math.round(-remaining).toLocaleString("en-AU")} over).`;
   } else {
     msg += ".";
   }
@@ -248,7 +250,8 @@ async function fetchUsageCredits(base, token, period) {
   });
   if (!res.ok) throw new Error(`FR24 usage API returned ${res.status} for period=${period}`);
   const rows = (await res.json()).data ?? [];
-  return rows.reduce((sum, row) => sum + (row.credits ?? 0), 0);
+  // FR24 can return credits as strings; coerce so the sum adds instead of concatenating
+  return rows.reduce((sum, row) => sum + (Number(row.credits) || 0), 0);
 }
 
 async function sendWebhook(env, content) {
