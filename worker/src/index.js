@@ -51,7 +51,7 @@ export async function run(env) {
   const flights = (await res.json()).data ?? [];
   if (flights.length === 0) return;
 
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  const state = await loadState(env);
   const now = Date.now();
   let changed = prune(state.alerted, now);
 
@@ -120,7 +120,7 @@ function airportName(iata) {
 
 async function maybeSendDailySummary(env) {
   const today = localDate(env.TIMEZONE);
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  const state = await loadState(env);
   if (state.summaryDate === today) return;
 
   const count = state.countDate === today ? (state.count ?? 0) : 0;
@@ -163,11 +163,11 @@ async function maybeSendDailySummary(env) {
 }
 
 async function maybeSendWeeklyScoreboard(env, weekday, hour) {
-  // Monday = 1, fire on the first tick at or after 7am
-  if (weekday !== 1 || hour < 7) return;
+  // Monday = 1, fire on the first tick from the start of active hours
+  if (weekday !== 1 || hour < Number(env.ACTIVE_START)) return;
 
   const today = localDate(env.TIMEZONE);
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  const state = await loadState(env);
   if (state.scoreboardDate === today) return;
 
   const board = (await env.STATE.get(SCOREBOARD_KEY, "json")) ?? {};
@@ -188,11 +188,11 @@ async function maybeSendWeeklyScoreboard(env, weekday, hour) {
 }
 
 async function maybeSendWeeklyCreditReport(env, weekday, hour) {
-  // Monday = 1, fire on the first tick at or after 7am — same cadence as the scoreboard
-  if (weekday !== 1 || hour < 7) return;
+  // Monday = 1, fire on the first tick from the start of active hours, same as the scoreboard
+  if (weekday !== 1 || hour < Number(env.ACTIVE_START)) return;
 
   const today = localDate(env.TIMEZONE);
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  const state = await loadState(env);
   if (state.creditReportDate === today) return;
 
   const maxCredits = Number(env.MAX_MONTHLY_CREDITS || 0);
@@ -268,8 +268,12 @@ async function postWebhook(url, content) {
   if (!res.ok) console.error(`Webhook error ${res.status}: ${await res.text()}`);
 }
 
+async function loadState(env) {
+  return (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+}
+
 async function warnOnce(env, content) {
-  const state = (await env.STATE.get(STATE_KEY, "json")) ?? { alerted: {}, lastCreditWarn: 0 };
+  const state = await loadState(env);
   if (Date.now() - (state.lastCreditWarn ?? 0) < CREDIT_WARN_EVERY_MS) return;
   state.lastCreditWarn = Date.now();
   await env.STATE.put(STATE_KEY, JSON.stringify(state));
@@ -305,9 +309,9 @@ function localTime(timeZone) {
     timeZone,
     hour: "numeric",
     minute: "numeric",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(now);
   const get = (t) => Number(parts.find((p) => p.type === t).value);
   const weekdayStr = new Intl.DateTimeFormat("en-AU", { timeZone, weekday: "short" }).format(now);
-  return { hour: get("hour") % 24, minute: get("minute"), weekday: DAY_NAMES.indexOf(weekdayStr) };
+  return { hour: get("hour"), minute: get("minute"), weekday: DAY_NAMES.indexOf(weekdayStr) };
 }
