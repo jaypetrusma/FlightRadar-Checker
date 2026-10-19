@@ -1,7 +1,7 @@
 /*  THIS WORKER IS DESIGNED TO GET THE DESTINATION OF FLIGHTS THAT FLY OVER MY HOUSE
     BC I HAVE AN INATE DESIRE TO KNOW — now serverless, so the PC can stay off.  */
 
-import airports from "./airports.json";
+import airports from "./airports.json" with { type: "json" };
 
 const STATE_KEY = "state";
 const SCOREBOARD_KEY = "scoreboard";
@@ -65,13 +65,21 @@ export async function run(env) {
 
   for (const f of flights) {
     if (state.alerted[f.fr24_id] && now - state.alerted[f.fr24_id] < REALERT_AFTER_MS) continue;
+    const count = (state.count ?? 0) + 1;
+    try {
+      await sendWebhook(env, buildMessage(f, env.TIMEZONE, count));
+    } catch (err) {
+      // Left unrecorded so the next poll retries it, and the flights already posted are
+      // still saved below instead of alerting again.
+      console.error(`Webhook post failed for ${f.fr24_id}: ${err}`);
+      continue;
+    }
     state.alerted[f.fr24_id] = now;
-    state.count = (state.count ?? 0) + 1;
+    state.count = count;
     const destKey = f.dest_iata || "unknown";
     state.destinations = state.destinations ?? {};
     state.destinations[destKey] = (state.destinations[destKey] ?? 0) + 1;
     changed = true;
-    await sendWebhook(env, buildMessage(f, env.TIMEZONE, state.count));
   }
 
   if (changed) await env.STATE.put(STATE_KEY, JSON.stringify(state));

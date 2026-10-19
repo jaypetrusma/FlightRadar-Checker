@@ -82,6 +82,8 @@ curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"
 
 `FR24_BASE` lets you point the worker at a mock server; leave it unset in production (it defaults to the real API).
 
+Unit tests stub `fetch` and KV, so they need no `npm install`, credits or webhook: `cd worker` then `npm test` (Node 22 or later).
+
 ## Regenerating `worker/src/airports.json`
 
 If `iata.csv` is updated:
